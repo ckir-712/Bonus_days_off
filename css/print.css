@@ -1,0 +1,23 @@
+@media print {
+  body {
+    background: #fff;
+    color: #111;
+  }
+  .sidebar, .no-print, .btn, .nav-btn {
+    display: none !important;
+  }
+  .app {
+    display: block;
+  }
+  .main {
+    padding: 0;
+  }
+  .card, .cal-cell, table, th, td {
+    box-shadow: none;
+    background: #fff;
+    color: #111;
+    border-color: #ccc;
+  }
+  a { color: #111; }
+  .page-head h2 { color: #111; }
+}

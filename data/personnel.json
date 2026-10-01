@@ -1,0 +1,14 @@
+[
+  {
+    "id": "P001",
+    "name": "홍길동",
+    "rank": "병장",
+    "company": "1중대",
+    "platoon": "1소대",
+    "position": "분대원",
+    "status": "active",
+    "skills": ["kitchen"],
+    "restrictions": [],
+    "memo": ""
+  }
+]

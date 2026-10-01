@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>군 행정·근무 통합 자동배정</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/print.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar no-print">
+      <div class="brand">
+        <h1>근무 통합 자동배정</h1>
+        <p>로컬 전용 · 서버 없음</p>
+      </div>
+      <div class="nav-section">
+        <button class="nav-btn" data-page="dashboard">대시보드</button>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">인원관리</div>
+        <button class="nav-btn child" data-page="personnel">전체 인원</button>
+        <button class="nav-btn child" data-page="leave">휴가</button>
+        <button class="nav-btn child" data-page="dispatch">파견</button>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">근무관리</div>
+        <button class="nav-btn child" data-page="dutyTypes">근무 종류</button>
+        <button class="nav-btn child" data-page="kitchen">취사지원</button>
+        <button class="nav-btn child" data-page="guard">경계근무</button>
+        <button class="nav-btn child" data-page="cctv">CCTV</button>
+        <button class="nav-btn child" data-page="watch">불침번</button>
+        <button class="nav-btn child" data-page="replacement">근무대체</button>
+      </div>
+      <div class="nav-section">
+        <button class="nav-btn" data-page="scheduler">자동배정</button>
+        <button class="nav-btn" data-page="roster">연명부</button>
+        <button class="nav-btn" data-page="calendar">달력</button>
+        <button class="nav-btn" data-page="stats">통계</button>
+        <button class="nav-btn" data-page="settings">설정</button>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">데이터 관리</div>
+        <button class="nav-btn child" data-page="data">JSON 가져오기/내보내기</button>
+      </div>
+    </aside>
+    <main class="main">
+      <div id="view"></div>
+    </main>
+  </div>
+  <div id="modalRoot"></div>
+
+  <script src="js/state.js"></script>
+  <script src="js/calendar.js"></script>
+  <script src="js/personnel.js"></script>
+  <script src="js/leave.js"></script>
+  <script src="js/dispatch.js"></script>
+  <script src="js/holiday.js"></script>
+  <script src="js/duty.js"></script>
+  <script src="js/kitchen.js"></script>
+  <script src="js/guard.js"></script>
+  <script src="js/cctv.js"></script>
+  <script src="js/watch.js"></script>
+  <script src="js/replacement.js"></script>
+  <script src="js/scheduler.js"></script>
+  <script src="js/validation.js"></script>
+  <script src="js/statistics.js"></script>
+  <script src="js/export.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

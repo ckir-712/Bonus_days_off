@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "personnel": [],
+  "leaves": [],
+  "dispatches": [],
+  "holidays": [],
+  "dutyTypes": [],
+  "dutySchedules": [],
+  "assignments": [],
+  "replacements": [],
+  "dutyGroups": { "cctv": [], "watch": [] },
+  "rotationSettings": { "startDate": "2026-10-01", "cycleDays": 45 }
+}

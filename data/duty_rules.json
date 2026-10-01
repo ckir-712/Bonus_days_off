@@ -1,0 +1,29 @@
+{
+  "cctv": {
+    "requiredPersonnel": 2,
+    "slots": [
+      { "startTime": "18:00", "endTime": "22:00" },
+      { "startTime": "22:00", "endTime": "02:00" },
+      { "startTime": "02:00", "endTime": "06:00" }
+    ]
+  },
+  "watch": {
+    "requiredPersonnel": 2,
+    "slots": [
+      { "startTime": "22:00", "endTime": "02:00" },
+      { "startTime": "02:00", "endTime": "06:00" }
+    ]
+  },
+  "kitchen": {
+    "requiredPersonnel": 3,
+    "slots": [
+      { "id": "morning", "label": "아침", "startTime": "05:30", "endTime": "08:00" }
+    ]
+  },
+  "guard": {
+    "requiredPersonnel": 2,
+    "slots": [
+      { "startTime": "22:00", "endTime": "00:00" }
+    ]
+  }
+}

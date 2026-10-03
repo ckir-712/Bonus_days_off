@@ -6,11 +6,17 @@
     year: 2026,
     month: 10,
     rosterDate: "2026-10-01",
-    rosterFilter: "",
+    rosterCompany: "",
+    rosterStatus: "",
+    rosterQuery: "",
     schedStart: "2026-10-01",
     schedEnd: "2026-10-31",
     preview: null,
-    selectedDate: "2026-10-01"
+    selectedDate: "2026-10-01",
+    showDispatchHistory: false,
+    archiveMonths: {},
+    kitchenMonth: "2026-10",
+    countMonth: "2026-10"
   };
 
   function esc(s) {
@@ -78,7 +84,7 @@
     var hist = (global.DutyApp.state.getState().history || []).slice(0, 8).map(function (h) {
       return "<li>" + esc(h.at.slice(11, 16) + " " + h.text) + "</li>";
     }).join("") || "<li>기록 없음</li>";
-    return head("대시보드", "오늘 " + today) +
+    return head("대시보드", "오늘 " + today + " · CCTV, 불침번, 취사지원은 오늘 이후 일정이 자동으로 맞춰집니다.") +
       '<div class="grid cards">' + cards + "</div>" +
       '<div class="grid two" style="margin-top:14px"><div class="card"><h3>CCTV / 불침번 현황</h3>' + rot + "</div>" +
       '<div class="card"><h3>최근 변경 이력</h3><ul>' + hist + "</ul></div></div>";
@@ -130,35 +136,98 @@
       (rows || '<tr><td colspan="5">없음</td></tr>') + "</tbody></table></div>";
   }
 
-  function renderDispatch() {
-    var rows = global.DutyApp.dispatch.list().map(function (r) {
-      return "<tr><td>" + esc(global.DutyApp.personnel.label(r.personId)) + "</td><td>" + esc(r.startDate) + "</td><td>" + esc(r.endDate) + "</td><td>" + esc(r.memo || "") + "</td>" +
-        '<td><button class="btn danger" data-action="del-dispatch" data-id="' + r.id + '">삭제</button></td></tr>';
+  function dispatchRows(records, removable) {
+    return records.map(function (r) {
+      var today = global.DutyApp.calendar.today();
+      var stateText = r.endDate < today ? "종료" : (r.startDate > today ? "예정" : "파견중");
+      var action = removable
+        ? '<button class="btn danger" data-action="del-dispatch" data-id="' + r.id + '">삭제</button>'
+        : "";
+      return "<tr><td>" + esc(global.DutyApp.personnel.label(r.personId)) + "</td><td>" + esc(r.startDate) + "</td><td>" + esc(r.endDate) + "</td><td>" + esc(stateText) + "</td><td>" + esc(r.memo || "") + "</td><td>" + action + "</td></tr>";
     }).join("");
-    return head("파견 관리", "파견 기간의 해당일은 모든 자동배정에서 완전히 제외됩니다. 조 편성에서는 유지됩니다.") +
+  }
+
+  function renderDispatch() {
+    global.DutyApp.dispatch.archiveEnded();
+    var current = global.DutyApp.dispatch.currentList();
+    var upcoming = global.DutyApp.dispatch.upcomingList();
+    var historyBtn = uiState.showDispatchHistory ? "현재 파견만 보기" : "이전 기록 보기";
+    var historyHtml = "";
+    if (uiState.showDispatchHistory) {
+      var groups = global.DutyApp.dispatch.archiveByMonth();
+      var keys = Object.keys(groups).sort().reverse();
+      historyHtml = '<div class="card" style="margin-top:12px"><h3>이전 기록</h3><p class="summary-line">끝난 파견은 월별로 접혀 있습니다. 월을 누르면 그 달 기록이 열립니다.</p>' +
+        (keys.map(function (key) {
+          var open = !!uiState.archiveMonths[key];
+          var body = open
+            ? '<table><thead><tr><th>인원</th><th>시작</th><th>종료</th><th>상태</th><th>메모</th><th></th></tr></thead><tbody>' + dispatchRows(groups[key], false) + "</tbody></table>"
+            : "";
+          return '<button class="btn fold" data-action="toggle-archive-month" data-month="' + esc(key) + '">' +
+            esc(global.DutyApp.calendar.monthLabel(key)) + " · " + groups[key].length + "건 · " + (open ? "접기" : "펼치기") + "</button>" + body;
+        }).join("") || "<p>이전 기록 없음</p>") + "</div>";
+    }
+    return head("파견 관리", "끝나면 현재 목록에서 빠지고 이전 기록으로 옮겨집니다. 조 편성은 유지되며, 파견 기간만 자동배정에서 제외됩니다.",
+      '<button class="btn" data-action="toggle-dispatch-history">' + historyBtn + "</button>") +
       '<div class="card"><div class="row">' +
       field("인원", '<select id="disp-person">' + personOptions() + "</select>") +
       field("시작", '<input type="date" id="disp-start">') +
       field("종료", '<input type="date" id="disp-end">') +
       field("메모", '<input id="disp-memo">') +
       '<button class="btn primary" data-action="add-dispatch">등록</button></div></div>' +
-      '<div class="card" style="margin-top:12px"><table><thead><tr><th>인원</th><th>시작</th><th>종료</th><th>메모</th><th></th></tr></thead><tbody>' +
-      (rows || '<tr><td colspan="5">없음</td></tr>') + "</tbody></table></div>";
+      '<div class="card" style="margin-top:12px"><h3>현재 파견</h3><table><thead><tr><th>인원</th><th>시작</th><th>종료</th><th>상태</th><th>메모</th><th></th></tr></thead><tbody>' +
+      (dispatchRows(current, true) || '<tr><td colspan="6">현재 파견 인원 없음</td></tr>') + "</tbody></table></div>" +
+      '<div class="card" style="margin-top:12px"><h3>예정 파견</h3><table><thead><tr><th>인원</th><th>시작</th><th>종료</th><th>상태</th><th>메모</th><th></th></tr></thead><tbody>' +
+      (dispatchRows(upcoming, true) || '<tr><td colspan="6">예정 없음</td></tr>') + "</tbody></table></div>" +
+      historyHtml;
   }
 
   function renderDutyTypes() {
-    var rows = global.DutyApp.duty.types().map(function (t) {
-      return "<tr><td>" + esc(t.id) + "</td><td>" + esc(t.name) + "</td><td>" + esc(t.category) + "</td><td>" + esc(t.defaultStart) + "~" + esc(t.defaultEnd) + "</td><td>" + t.requiredPersonnel + "</td><td>" + esc(t.skill || "-") + "</td></tr>";
+    var blocks = global.DutyApp.duty.types().map(function (t) {
+      if (t.timed === false) {
+        var items = (t.items || []).map(function (item) {
+          return "<tr><td>" + esc(item.label) + "</td><td>" + item.requiredPersonnel + "명</td><td>시간 없음</td>" +
+            '<td><button class="btn danger" data-action="del-kitchen-item" data-id="' + item.id + '">삭제</button></td></tr>';
+        }).join("");
+        return "<h3>" + esc(t.name) + "</h3><p class='summary-line'>시작·종료 시간이 없습니다. 평일과 주말을 나눠 항목마다 따로 맞춥니다.</p><table><thead><tr><th>항목</th><th>인원</th><th>시간</th><th></th></tr></thead><tbody>" +
+          (items || '<tr><td colspan="4">항목 없음</td></tr>') + "</tbody></table>";
+      }
+      var shifts = (t.shifts || []).slice().sort(function (a, b) { return Number(a.order) - Number(b.order); }).map(function (s) {
+        return "<tr><td>" + esc(global.DutyApp.duty.shiftText(s)) + "</td><td>" + s.requiredPersonnel + "명</td>" +
+          '<td><button class="btn danger" data-action="del-shift" data-type="' + t.id + '" data-id="' + s.id + '">삭제</button></td></tr>';
+      }).join("");
+      return "<h3>" + esc(t.name) + "</h3><table><thead><tr><th>번초</th><th>인원</th><th></th></tr></thead><tbody>" +
+        (shifts || '<tr><td colspan="3">번초 없음</td></tr>') + "</tbody></table>";
+    }).join("");
+    var timedOptions = global.DutyApp.duty.types().filter(function (t) { return t.timed !== false; }).map(function (t) {
+      return '<option value="' + t.id + '">' + esc(t.name) + "</option>";
     }).join("");
     var extra = global.DutyApp.duty.schedules().map(function (s) {
-      return "<tr><td>" + esc(s.date) + "</td><td>" + esc(s.dutyTypeId) + "</td><td>" + esc(s.startTime) + "~" + esc(s.endTime) + "</td><td>" + s.requiredPersonnel + "</td>" +
+      return "<tr><td>" + esc(s.date) + "</td><td>" + esc((global.DutyApp.duty.typeById(s.dutyTypeId) || {}).name || s.dutyTypeId) + "</td><td>" + esc(s.startTime) + "~" + esc(s.endTime) + "</td><td>" + s.requiredPersonnel + "</td>" +
         '<td><button class="btn danger" data-action="del-schedule" data-id="' + s.id + '">삭제</button></td></tr>';
     }).join("");
-    return head("근무 종류", "기본 근무와 날짜별 기타 일정을 관리합니다.") +
-      '<div class="card"><h3>근무 종류</h3><table><thead><tr><th>ID</th><th>이름</th><th>분류</th><th>기본시간</th><th>필요인원</th><th>자격</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
-      '<div class="card" style="margin-top:12px"><h3>기타/지정 일정 추가</h3><div class="row">' +
+    return head("근무 종류", "시간 있는 근무는 n번초와 시작·종료 시각으로 추가합니다. 추가한 번초는 매일 배정에 쓰입니다.") +
+      '<div class="card">' + blocks + "</div>" +
+      '<div class="card" style="margin-top:12px"><h3>근무 종류 추가</h3><div class="row">' +
+      field("이름", '<input id="type-name" placeholder="예: 당직">') +
+      '<button class="btn primary" data-action="add-duty-type">종류 추가</button></div></div>' +
+      '<div class="card" style="margin-top:12px"><h3>번초 추가</h3><div class="row">' +
+      field("근무", '<select id="sh-type">' + timedOptions + "</select>") +
+      field("몇 번초", '<input type="number" id="sh-order" min="1" value="1">') +
+      field("시작 시", '<input type="number" id="sh-h1" min="0" max="23" value="22">') +
+      field("시작 분", '<input type="number" id="sh-m1" min="0" max="59" value="0">') +
+      field("종료 시", '<input type="number" id="sh-h2" min="0" max="23" value="0">') +
+      field("종료 분", '<input type="number" id="sh-m2" min="0" max="59" value="0">') +
+      field("인원", '<input type="number" id="sh-req" min="1" value="1">') +
+      '<button class="btn primary" data-action="add-shift">번초 추가</button></div>' +
+      "<p class='summary-line'>같은 번호가 있으면 그 번초의 시간이 바뀝니다. 예: 1번초 22시 00분부터 00시 00분까지.</p></div>" +
+      '<div class="card" style="margin-top:12px"><h3>취사지원 항목 추가</h3><div class="row">' +
+      field("항목", '<input id="kit-label" placeholder="아침">') +
+      field("인원", '<input type="number" id="kit-req" min="1" value="3">') +
+      '<button class="btn primary" data-action="add-kitchen-item">항목 추가</button></div>' +
+      "<p class='summary-line'>취사지원은 시각이 없습니다. 평일 횟수와 주말 횟수를 항목별로 따로 맞춥니다.</p></div>" +
+      '<div class="card" style="margin-top:12px"><h3>특정 날짜만 지정</h3><p class="summary-line">일반 근무는 이 날짜에 한해 매일 번초 대신 이 시간이 쓰입니다.</p><div class="row">' +
       field("날짜", '<input type="date" id="sch-date">') +
-      field("종류", '<select id="sch-type">' + global.DutyApp.duty.types().map(function (t) { return '<option value="' + t.id + '">' + esc(t.name) + "</option>"; }).join("") + "</select>") +
+      field("종류", '<select id="sch-type">' + timedOptions + "</select>") +
       field("시작", '<input id="sch-start" value="09:00">') +
       field("종료", '<input id="sch-end" value="17:00">') +
       field("인원", '<input type="number" id="sch-req" value="1">') +
@@ -167,16 +236,41 @@
       (extra || '<tr><td colspan="5">지정 일정 없음</td></tr>') + "</tbody></table></div>";
   }
 
-  function assignmentTable(type) {
-    var rows = global.DutyApp.duty.assignments({ dutyTypeId: type }).map(function (a) {
-      return "<tr><td>" + esc(a.date) + "</td><td>" + esc(a.startTime) + "~" + esc(a.endTime) + "</td><td>" + esc(global.DutyApp.personnel.label(a.personId)) + "</td><td>" + esc(a.source) + "</td>" +
+  function assignmentWhen(a) {
+    if (a.dutyTypeId === "kitchen" || (!a.startTime && !a.endTime)) {
+      var kind = a.bucket || global.DutyApp.holiday.kitchenDayKind(a.date);
+      return (a.slot || "항목") + " · " + global.DutyApp.kitchen.kindLabel(kind);
+    }
+    var type = global.DutyApp.duty.typeById(a.dutyTypeId);
+    var shift = type && (type.shifts || []).find(function (s) { return s.id === a.slotKey; });
+    if (shift) return global.DutyApp.duty.shiftText(shift);
+    if (a.slot && a.startTime) return a.slot + " " + a.startTime + "~" + a.endTime;
+    return (a.startTime || "") + (a.endTime ? "~" + a.endTime : "");
+  }
+
+  function assignmentTable(type, monthKey) {
+    var rows = global.DutyApp.duty.assignments({ dutyTypeId: type }).filter(function (a) {
+      return !monthKey || a.date.slice(0, 7) === monthKey;
+    }).map(function (a) {
+      return "<tr><td>" + esc(a.date) + "</td><td>" + esc(assignmentWhen(a)) + "</td><td>" + esc(global.DutyApp.personnel.label(a.personId)) + "</td><td>" + esc(a.source) + "</td>" +
         '<td><button class="btn danger" data-action="del-assign" data-id="' + a.id + '">삭제</button></td></tr>';
     }).join("");
-    return '<div class="card" style="margin-top:12px"><h3>배정 목록</h3><table><thead><tr><th>날짜</th><th>시간</th><th>인원</th><th>출처</th><th></th></tr></thead><tbody>' +
-      (rows || '<tr><td colspan="5">없음</td></tr>') + "</tbody></table></div>";
+    return '<div class="card" style="margin-top:12px"><h3>배정 목록</h3><div class="table-wrap"><table><thead><tr><th>날짜</th><th>내용</th><th>인원</th><th>출처</th><th></th></tr></thead><tbody>' +
+      (rows || '<tr><td colspan="5">없음</td></tr>') + "</tbody></table></div></div>";
   }
 
   function manualAssignForm(type) {
+    var dutyType = global.DutyApp.duty.typeById(type);
+    if (dutyType && dutyType.timed === false) {
+      var options = (dutyType.items || []).map(function (item) {
+        return '<option value="' + item.id + '">' + esc(item.label) + "</option>";
+      }).join("");
+      return '<div class="card"><h3>수동 배정</h3><div class="row">' +
+        field("날짜", '<input type="date" id="ma-date" value="' + esc(uiState.selectedDate) + '">') +
+        field("항목", '<select id="ma-item">' + options + "</select>") +
+        field("인원", '<select id="ma-person">' + personOptions() + "</select>") +
+        '<button class="btn primary" data-action="manual-assign" data-type="' + type + '">수동 배정</button></div></div>';
+    }
     return '<div class="card"><h3>수동 배정</h3><div class="row">' +
       field("날짜", '<input type="date" id="ma-date" value="' + esc(uiState.selectedDate) + '">') +
       field("시작", '<input id="ma-start" value="22:00">') +
@@ -185,10 +279,18 @@
       '<button class="btn primary" data-action="manual-assign" data-type="' + type + '">수동 배정</button></div></div>';
   }
 
+  function slotBag(row, id, label) {
+    return row.bySlot[id] || row.bySlot[label] || { weekday: 0, friday: 0, weekend: 0, all: 0 };
+  }
+
+  function monthPicker(id, value) {
+    return field("월", '<input type="month" id="' + id + '" value="' + esc(value) + '">');
+  }
+
   function groupList(ids, date, role) {
     return ids.map(function (id) {
       var p = global.DutyApp.personnel.byId(id);
-      var av = global.DutyApp.duty.isAvailableForDuty(id, date, role);
+      var av = global.DutyApp.duty.isAvailableForDuty(id, date, role, { checkConsecutive: false });
       var mark = av.ok ? '<span class="badge ok">가능</span>' : '<span class="badge error">' + esc(av.reasons.join(", ")) + "</span>";
       return '<div class="list-item"><div>' + esc(p ? p.rank + " " + p.name : id) + "</div><div>" + mark +
         ' <button class="btn" data-action="move-group" data-id="' + id + '" data-to="A">A조</button>' +
@@ -212,7 +314,13 @@
         card("불침번 담당", info.watchGroup + "조") +
         card("다음 교대일", info.nextRotation) + "</div>";
     var title = kind === "cctv" ? "CCTV" : "불침번";
-    return head(title, "조 구성과 날짜별 역할은 분리되어 있습니다. 파견/휴가자는 조에 남아 있으나 해당일 배정에서 제외됩니다.",
+    var month = uiState.countMonth;
+    var counts = global.DutyApp.statistics.monthlyDutyCounts(kind, month);
+    var countHtml = kind === "cctv" ? cctvCountTable(counts, month) : watchCountTable(counts, month);
+    var note = kind === "cctv"
+      ? "지난 날짜는 그대로 두고, 오늘부터 이번 달 끝까지 다시 맞춥니다. 다음날 평일·금요일·주말 횟수를 번초마다 따로 맞춥니다."
+      : "지난 날짜는 그대로 두고, 오늘부터 이번 달 끝까지 다시 맞춥니다. 번초별 횟수를 맞춥니다.";
+    return head(title, "조 구성과 날짜별 역할은 분리되어 있습니다. 파견/휴가자는 조에 남아 있으나 해당일 배정에서 제외됩니다. " + note,
       '<input type="date" id="rot-date" value="' + date + '"><button class="btn" data-action="set-rot-date">날짜 적용</button> ' +
       '<button class="btn primary" data-action="auto-groups">자동 조편성</button> ' +
       '<button class="btn" data-action="reset-groups">조 초기화</button> ' +
@@ -220,7 +328,43 @@
       '<div class="card"><h3>CCTV / 불침번 교대 현황</h3>' + status + "</div>" +
       '<div class="split" style="margin-top:12px"><div class="card"><h3>A조 · ' + esc(st.groupMeta.A) + " (" + a.length + "명)</h3><div class='list-box'>" + groupList(a, date, "cctv") + "</div></div>" +
       "<div class='card'><h3>B조 · " + esc(st.groupMeta.B) + " (" + b.length + "명)</h3><div class='list-box'>" + groupList(b, date, "watch") + "</div></div></div>" +
-      manualAssignForm(kind) + assignmentTable(kind);
+      '<div class="card" style="margin-top:12px"><div class="row">' +
+      monthPicker("count-month", month) +
+      '<button class="btn" data-action="set-count-month">월 조회</button></div>' + countHtml + "</div>" +
+      manualAssignForm(kind) + assignmentTable(kind, month);
+  }
+
+  function cctvCountTable(counts, month) {
+    var shifts = global.DutyApp.cctv.shifts();
+    var summary = counts.map(function (row) {
+      return "<tr><td>" + esc(row.rank + " " + row.name) + "</td><td>" + row.byBucket.weekday + "</td><td>" + row.byBucket.friday + "</td><td>" + row.byBucket.weekend + "</td><td>" + row.total + "</td></tr>";
+    }).join("");
+    var headCells = shifts.map(function (s) {
+      return "<th>" + esc(s.label) + " 평일</th><th>" + esc(s.label) + " 금요일</th><th>" + esc(s.label) + " 주말</th>";
+    }).join("");
+    var detail = counts.map(function (row) {
+      var cells = shifts.map(function (s) {
+        var bag = slotBag(row, s.id, s.label);
+        return "<td>" + bag.weekday + "</td><td>" + bag.friday + "</td><td>" + bag.weekend + "</td>";
+      }).join("");
+      return "<tr><td>" + esc(row.rank + " " + row.name) + "</td>" + cells + "<td>" + row.total + "</td></tr>";
+    }).join("");
+    return "<h3>" + esc(global.DutyApp.calendar.monthLabel(month)) + " CCTV 횟수</h3>" +
+      '<div class="table-wrap"><table><thead><tr><th>성명</th><th>다음날 평일</th><th>다음날 금요일</th><th>다음날 주말</th><th>합계</th></tr></thead><tbody>' +
+      (summary || '<tr><td colspan="5">없음</td></tr>') + "</tbody></table></div>" +
+      "<h3 style='margin-top:14px'>번초별</h3><div class='table-wrap'><table><thead><tr><th>성명</th>" + headCells + "<th>합계</th></tr></thead><tbody>" +
+      (detail || "<tr><td colspan='2'>없음</td></tr>") + "</tbody></table></div>";
+  }
+
+  function watchCountTable(counts, month) {
+    var shifts = global.DutyApp.watch.shifts();
+    var headCells = shifts.map(function (s) { return "<th>" + esc(s.label) + "</th>"; }).join("");
+    var body = counts.map(function (row) {
+      var cells = shifts.map(function (s) { return "<td>" + slotBag(row, s.id, s.label).all + "</td>"; }).join("");
+      return "<tr><td>" + esc(row.rank + " " + row.name) + "</td>" + cells + "<td>" + row.total + "</td></tr>";
+    }).join("");
+    return "<h3>" + esc(global.DutyApp.calendar.monthLabel(month)) + " 불침번 횟수</h3><div class='table-wrap'><table><thead><tr><th>성명</th>" +
+      headCells + "<th>합계</th></tr></thead><tbody>" + (body || "<tr><td colspan='2'>없음</td></tr>") + "</tbody></table></div>";
   }
 
   function card(label, value) {
@@ -228,8 +372,30 @@
   }
 
   function renderKitchen() {
-    return head("취사지원", "휴가자/파견자는 자동 선별에서 제외됩니다.", '<button class="btn" data-action="print">인쇄</button>') +
-      manualAssignForm("kitchen") + assignmentTable("kitchen");
+    var month = uiState.kitchenMonth;
+    var items = global.DutyApp.kitchen.items();
+    var counts = global.DutyApp.statistics.monthlyDutyCounts("kitchen", month);
+    var headCells = items.map(function (item) {
+      return "<th>" + esc(item.label) + " 평일</th><th>" + esc(item.label) + " 주말</th>";
+    }).join("");
+    var body = counts.map(function (row) {
+      var cells = items.map(function (item) {
+        var bag = slotBag(row, item.id, item.label);
+        return "<td>" + bag.weekday + "</td><td>" + bag.weekend + "</td>";
+      }).join("");
+      return "<tr><td>" + esc(row.rank + " " + row.name) + "</td>" + cells +
+        "<td>" + row.byBucket.weekday + "</td><td>" + row.byBucket.weekend + "</td><td>" + row.total + "</td></tr>";
+    }).join("");
+    return head("취사지원", "한 달 단위로 자동 배정합니다. 시작·종료 시간은 없고, 평일 횟수와 주말 횟수를 항목마다 따로 맞춥니다. 휴가자와 파견자는 제외됩니다.",
+      '<button class="btn" data-action="print">인쇄</button>') +
+      '<div class="card"><div class="row">' +
+      monthPicker("kitchen-month", month) +
+      '<button class="btn" data-action="set-kitchen-month">월 조회</button>' +
+      '<button class="btn primary" data-action="assign-kitchen-month">이 달 자동배정</button></div>' +
+      "<h3 style='margin-top:12px'>" + esc(global.DutyApp.calendar.monthLabel(month)) + " 취사지원 횟수</h3>" +
+      '<div class="table-wrap"><table><thead><tr><th>성명</th>' + headCells + "<th>평일 합계</th><th>주말 합계</th><th>총합</th></tr></thead><tbody>" +
+      (body || "<tr><td colspan='4'>없음</td></tr>") + "</tbody></table></div></div>" +
+      manualAssignForm("kitchen") + assignmentTable("kitchen", month);
   }
 
   function renderGuard() {
@@ -277,33 +443,65 @@
       '<button class="btn" data-action="preview-assign">자동배정 미리보기</button>' +
       '<button class="btn primary" data-action="apply-assign">배정 적용</button>' +
       '<button class="btn warn" data-action="undo-assign">자동배정 취소</button></div>' +
-      "<p class='stat-sub'>실행 순서: 기간생성 → 휴일 → 45일 주기 → 조 역할 → 휴가/파견 제외 → CCTV/불침번 → 일반근무 공정배정 → 대체 반영 → 검증</p></div>" +
+      "<p class='stat-sub'>CCTV는 다음날 평일·금요일·주말 횟수를 따로 맞추고, 취사지원은 평일·주말 횟수를 따로 맞춥니다. 지난 CCTV·불침번 날짜는 유지한 채 오늘 이후만 자동으로 다시 계산됩니다.</p></div>" +
       '<div style="margin-top:12px">' + summary + "</div>";
+  }
+
+  function dayStatus(person, date) {
+    var rest = global.DutyApp.duty.restrictionOnDate(person, date);
+    if (rest === "파견") return "dispatch";
+    if (rest === "휴가") return "leave";
+    if (rest === "교육") return "training";
+    if (rest === "근무제한") return "medical";
+    if (person.status === "other") return "other";
+    return "active";
   }
 
   function renderRoster() {
     var date = uiState.rosterDate;
-    var filter = uiState.rosterFilter;
-    var list = global.DutyApp.duty.assignments({ date: date });
-    if (filter) list = list.filter(function (a) { return a.dutyTypeId === filter; });
-    var groups = {};
-    list.forEach(function (a) {
-      var key = a.dutyTypeId + " " + a.startTime + "~" + a.endTime + (a.slot ? " " + a.slot : "");
-      groups[key] = groups[key] || [];
-      groups[key].push(a);
+    var people = global.DutyApp.personnel.list().filter(function (p) {
+      if (uiState.rosterCompany && p.company !== uiState.rosterCompany) return false;
+      if (uiState.rosterStatus && dayStatus(p, date) !== uiState.rosterStatus) return false;
+      if (uiState.rosterQuery) {
+        var q = uiState.rosterQuery;
+        var blob = (p.rank + " " + p.name + " " + p.company + " " + (p.platoon || "")).toLowerCase();
+        if (blob.indexOf(q.toLowerCase()) < 0) return false;
+      }
+      return true;
     });
-    var body = Object.keys(groups).map(function (k) {
-      return "<h3>" + esc((global.DutyApp.duty.typeById(groups[k][0].dutyTypeId) || {}).name || groups[k][0].dutyTypeId) + "</h3><div>" + esc(groups[k][0].startTime + " ~ " + groups[k][0].endTime) + "</div><ul>" +
-        groups[k].map(function (a) { return "<li>" + esc(global.DutyApp.personnel.label(a.personId)) + "</li>"; }).join("") + "</ul>";
-    }).join("") || "<p>배정 없음</p>";
+    var counts = { all: global.DutyApp.personnel.list().length, active: 0, leave: 0, dispatch: 0, training: 0, duty: 0 };
+    global.DutyApp.personnel.list().forEach(function (p) {
+      var st = dayStatus(p, date);
+      if (counts[st] !== undefined) counts[st] += 1;
+    });
+    var dutyPeople = {};
+    global.DutyApp.duty.assignments({ date: date }).forEach(function (a) { dutyPeople[a.personId] = true; });
+    counts.duty = Object.keys(dutyPeople).length;
+    var rows = people.map(function (p, i) {
+      var mine = global.DutyApp.duty.assignments({ date: date, personId: p.id });
+      var dutyText = mine.map(function (a) {
+        var name = (global.DutyApp.duty.typeById(a.dutyTypeId) || {}).name || a.dutyTypeId;
+        return name + " " + assignmentWhen(a);
+      }).join(", ");
+      var status = dayStatus(p, date);
+      return "<tr><td>" + (i + 1) + "</td><td>" + esc(p.company) + "</td><td>" + esc(p.platoon || "") + "</td><td>" + esc(p.rank) + "</td><td>" + esc(p.name) + "</td><td>" + esc(p.position || "") + "</td><td>" + statusBadge(status) + "</td><td>" + (dutyText ? esc(dutyText) : "대기") + "</td><td>" + esc(p.memo || "") + "</td></tr>";
+    }).join("");
+    var companies = global.DutyApp.personnel.companies().map(function (c) {
+      return '<option value="' + esc(c) + '"' + (c === uiState.rosterCompany ? " selected" : "") + ">" + esc(c) + "</option>";
+    }).join("");
     var d = global.DutyApp.calendar.parseDate(date);
-    var title = d.getFullYear() + "년 " + (d.getMonth() + 1) + "월 " + d.getDate() + "일 근무 연명부";
-    return head("근무 연명부", title, '<button class="btn" data-action="print">인쇄</button>') +
+    var title = d.getFullYear() + "년 " + (d.getMonth() + 1) + "월 " + d.getDate() + "일 전체 인원 연명부";
+    return head("전체 인원 연명부", "근무자만 보는 근무 연명부가 아니라, 그날의 전체 인원 상태입니다.", '<button class="btn" data-action="print">인쇄</button>') +
       '<div class="card no-print"><div class="row">' +
       field("날짜", '<input type="date" id="roster-date" value="' + date + '">') +
-      field("근무 종류", '<select id="roster-filter"><option value="">전체</option><option value="cctv">CCTV</option><option value="watch">불침번</option><option value="kitchen">취사지원</option><option value="guard">경계근무</option></select>') +
+      field("중대", '<select id="roster-company"><option value="">전체</option>' + companies + "</select>") +
+      field("상태", '<select id="roster-status"><option value="">전체</option><option value="active">정상</option><option value="leave">휴가</option><option value="dispatch">파견</option><option value="training">교육</option><option value="medical">근무제한</option></select>') +
+      field("검색", '<input id="roster-query" value="' + esc(uiState.rosterQuery) + '" placeholder="이름, 계급">') +
       '<button class="btn primary" data-action="set-roster">조회</button></div></div>' +
-      '<div class="card" style="margin-top:12px"><h2>' + esc(title) + "</h2>" + body + "</div>";
+      '<div class="card" style="margin-top:12px"><h2>' + esc(title) + "</h2>" +
+      '<p class="summary-line">총원 ' + counts.all + " · 정상 " + counts.active + " · 휴가 " + counts.leave + " · 파견 " + counts.dispatch + " · 교육 " + counts.training + " · 당일 근무 " + counts.duty + "</p>" +
+      '<div class="table-wrap"><table><thead><tr><th>연번</th><th>중대</th><th>소대</th><th>계급</th><th>성명</th><th>직책</th><th>상태</th><th>당일 근무</th><th>비고</th></tr></thead><tbody>' +
+      (rows || '<tr><td colspan="9">인원 없음</td></tr>') + "</tbody></table></div></div>";
   }
 
   function renderCalendar() {
@@ -373,7 +571,7 @@
       '<label class="btn">JSON 가져오기<input type="file" id="import-file" accept="application/json" hidden></label>' +
       '<button class="btn" data-action="load-sample">샘플 데이터</button>' +
       '<button class="btn danger" data-action="wipe">전체 초기화</button></div>' +
-      '<p class="stat-sub">버전 1.0.0 · 키 militaryDutyData</p>';
+      '<p class="stat-sub">버전 1.1.0 · 키 militaryDutyData</p>';
   }
 
   function render(page) {
@@ -406,14 +604,15 @@
     if (mode) mode.value = global.DutyApp.state.getState().settings.groupMode || "manual";
     var prot = document.getElementById("set-protect");
     if (prot) prot.value = String(!!global.DutyApp.state.getState().settings.protectManualAssignments);
-    var rf = document.getElementById("roster-filter");
-    if (rf) rf.value = uiState.rosterFilter;
+    var rs = document.getElementById("roster-status");
+    if (rs) rs.value = uiState.rosterStatus || "";
     var file = document.getElementById("import-file");
     if (file) {
       file.addEventListener("change", function (e) {
         var f = e.target.files[0];
         if (!f) return;
         global.DutyApp.export.importJson(f, function (err) {
+          if (!err && global.DutyApp.scheduler.autoMaintain) global.DutyApp.scheduler.autoMaintain();
           alert(err ? "가져오기 실패" : "가져오기 완료");
           render(uiState.page);
         });
@@ -455,15 +654,58 @@
     if (action === "add-leave") {
       if (!val("leave-start") || !val("leave-end")) return;
       global.DutyApp.leave.save({ personId: val("leave-person"), startDate: val("leave-start"), endDate: val("leave-end"), memo: val("leave-memo") });
+      global.DutyApp.scheduler.autoMaintain();
       render("leave"); return;
     }
-    if (action === "del-leave") { global.DutyApp.leave.remove(el.getAttribute("data-id")); render("leave"); return; }
+    if (action === "del-leave") { global.DutyApp.leave.remove(el.getAttribute("data-id")); global.DutyApp.scheduler.autoMaintain(); render("leave"); return; }
     if (action === "add-dispatch") {
       if (!val("disp-start") || !val("disp-end")) return;
       global.DutyApp.dispatch.save({ personId: val("disp-person"), startDate: val("disp-start"), endDate: val("disp-end"), memo: val("disp-memo") });
+      global.DutyApp.scheduler.autoMaintain();
       render("dispatch"); return;
     }
-    if (action === "del-dispatch") { global.DutyApp.dispatch.remove(el.getAttribute("data-id")); render("dispatch"); return; }
+    if (action === "del-dispatch") { global.DutyApp.dispatch.remove(el.getAttribute("data-id")); global.DutyApp.scheduler.autoMaintain(); render("dispatch"); return; }
+    if (action === "toggle-dispatch-history") {
+      uiState.showDispatchHistory = !uiState.showDispatchHistory;
+      render("dispatch"); return;
+    }
+    if (action === "toggle-archive-month") {
+      var monthKey = el.getAttribute("data-month");
+      uiState.archiveMonths[monthKey] = !uiState.archiveMonths[monthKey];
+      render("dispatch"); return;
+    }
+    if (action === "add-duty-type") {
+      global.DutyApp.duty.addCustomType(val("type-name"));
+      render("dutyTypes"); return;
+    }
+    if (action === "add-shift") {
+      var start = global.DutyApp.calendar.joinTime(val("sh-h1"), val("sh-m1"));
+      var end = global.DutyApp.calendar.joinTime(val("sh-h2"), val("sh-m2"));
+      if (start === end) { alert("시작 시각과 종료 시각이 같습니다."); return; }
+      global.DutyApp.duty.upsertShift(val("sh-type"), {
+        order: Number(val("sh-order") || 1),
+        startTime: start,
+        endTime: end,
+        requiredPersonnel: Number(val("sh-req") || 1)
+      });
+      global.DutyApp.scheduler.autoMaintain();
+      render("dutyTypes"); return;
+    }
+    if (action === "del-shift") {
+      global.DutyApp.duty.removeShift(el.getAttribute("data-type"), el.getAttribute("data-id"));
+      global.DutyApp.scheduler.autoMaintain();
+      render("dutyTypes"); return;
+    }
+    if (action === "add-kitchen-item") {
+      global.DutyApp.duty.addKitchenItem({ label: val("kit-label"), requiredPersonnel: Number(val("kit-req") || 1) });
+      global.DutyApp.scheduler.autoMaintain();
+      render("dutyTypes"); return;
+    }
+    if (action === "del-kitchen-item") {
+      global.DutyApp.duty.removeKitchenItem(el.getAttribute("data-id"));
+      global.DutyApp.scheduler.autoMaintain();
+      render("dutyTypes"); return;
+    }
     if (action === "add-schedule") {
       global.DutyApp.duty.saveSchedule({
         dutyTypeId: val("sch-type"), date: val("sch-date"), startTime: val("sch-start"), endTime: val("sch-end"),
@@ -474,9 +716,19 @@
     if (action === "del-schedule") { global.DutyApp.duty.removeSchedule(el.getAttribute("data-id")); render("dutyTypes"); return; }
     if (action === "manual-assign") {
       var type = el.getAttribute("data-type");
+      var dutyType = global.DutyApp.duty.typeById(type);
+      var untimed = dutyType && dutyType.timed === false;
+      var item = untimed ? (dutyType.items || []).find(function (x) { return x.id === val("ma-item"); }) : null;
       var rec = {
-        date: val("ma-date"), startTime: val("ma-start"), endTime: val("ma-end"),
-        personId: val("ma-person"), dutyTypeId: type, source: "manual"
+        date: val("ma-date"),
+        startTime: untimed ? "" : val("ma-start"),
+        endTime: untimed ? "" : val("ma-end"),
+        personId: val("ma-person"),
+        dutyTypeId: type,
+        source: "manual",
+        slot: item ? item.label : "",
+        slotKey: item ? item.id : "",
+        bucket: untimed ? global.DutyApp.holiday.kitchenDayKind(val("ma-date")) : (type === "cctv" ? global.DutyApp.cctv.nextDayBucket(val("ma-date")) : "")
       };
       var chk = global.DutyApp.duty.isAvailableForDuty(rec.personId, rec.date, type, { startTime: rec.startTime, endTime: rec.endTime });
       if (!chk.ok) { alert("배정 불가: " + chk.reasons.join(", ")); return; }
@@ -484,9 +736,9 @@
       render(uiState.page); return;
     }
     if (action === "del-assign") { global.DutyApp.duty.removeAssignment(el.getAttribute("data-id")); render(uiState.page); return; }
-    if (action === "auto-groups") { global.DutyApp.cctv.autoFormGroups(); render(uiState.page); return; }
-    if (action === "reset-groups") { global.DutyApp.cctv.resetGroups(); render(uiState.page); return; }
-    if (action === "move-group") { global.DutyApp.cctv.movePerson(el.getAttribute("data-id"), el.getAttribute("data-to")); render(uiState.page); return; }
+    if (action === "auto-groups") { global.DutyApp.cctv.autoFormGroups(); global.DutyApp.scheduler.autoMaintain(); render(uiState.page); return; }
+    if (action === "reset-groups") { global.DutyApp.cctv.resetGroups(); global.DutyApp.scheduler.autoMaintain(); render(uiState.page); return; }
+    if (action === "move-group") { global.DutyApp.cctv.movePerson(el.getAttribute("data-id"), el.getAttribute("data-to")); global.DutyApp.scheduler.autoMaintain(); render(uiState.page); return; }
     if (action === "set-rot-date") { uiState.selectedDate = val("rot-date") || uiState.selectedDate; render(uiState.page); return; }
     if (action === "add-rep") {
       var res = global.DutyApp.replacement.save({
@@ -513,8 +765,24 @@
       render("scheduler"); return;
     }
     if (action === "set-roster") {
-      uiState.rosterDate = val("roster-date"); uiState.rosterFilter = val("roster-filter");
+      uiState.rosterDate = val("roster-date") || uiState.rosterDate;
+      uiState.rosterCompany = val("roster-company");
+      uiState.rosterStatus = val("roster-status");
+      uiState.rosterQuery = val("roster-query");
       render("roster"); return;
+    }
+    if (action === "set-count-month") {
+      uiState.countMonth = val("count-month") || uiState.countMonth;
+      render(uiState.page); return;
+    }
+    if (action === "set-kitchen-month") {
+      uiState.kitchenMonth = val("kitchen-month") || uiState.kitchenMonth;
+      render("kitchen"); return;
+    }
+    if (action === "assign-kitchen-month") {
+      uiState.kitchenMonth = val("kitchen-month") || uiState.kitchenMonth;
+      global.DutyApp.scheduler.assignKitchenMonth(uiState.kitchenMonth);
+      render("kitchen"); return;
     }
     if (action === "cal-prev") {
       uiState.month -= 1; if (uiState.month < 1) { uiState.month = 12; uiState.year -= 1; }
@@ -542,7 +810,11 @@
       render("settings"); return;
     }
     if (action === "export-json") { global.DutyApp.export.exportJson(); return; }
-    if (action === "load-sample") { global.DutyApp.state.resetToSample(); render("data"); return; }
+    if (action === "load-sample") {
+      global.DutyApp.state.resetToSample();
+      global.DutyApp.scheduler.autoMaintain();
+      render("data"); return;
+    }
     if (action === "wipe") {
       if (confirm("모든 로컬 데이터를 지울까요?")) { global.DutyApp.state.resetEmpty(); render("data"); }
       return;
@@ -558,6 +830,15 @@
       var nav = e.target.closest("[data-page]");
       if (nav && nav.classList.contains("nav-btn")) render(nav.getAttribute("data-page"));
     });
+    var today = global.DutyApp.calendar.today();
+    uiState.rosterDate = today;
+    uiState.selectedDate = today;
+    uiState.kitchenMonth = today.slice(0, 7);
+    uiState.countMonth = today.slice(0, 7);
+    uiState.schedStart = global.DutyApp.calendar.monthStart(today);
+    uiState.schedEnd = global.DutyApp.calendar.monthEnd(today);
+    global.DutyApp.dispatch.archiveEnded();
+    global.DutyApp.scheduler.autoMaintain();
     render("dashboard");
   }
 

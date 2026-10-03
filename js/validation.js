@@ -39,7 +39,7 @@
       if (rest === "파견") {
         errors.push({
           code: "dispatch",
-          message: "오류\n" + person.name + "\n" + a.date + "\n상태: 파견\n배정된 근무: " + ((global.DutyApp.duty.typeById(a.dutyTypeId) || {}).name || a.dutyTypeId) + " " + a.startTime + "~" + a.endTime + "\n파견 기간과 근무일이 중복됩니다.",
+          message: "오류\n" + person.name + "\n" + a.date + "\n상태: 파견\n배정된 근무: " + ((global.DutyApp.duty.typeById(a.dutyTypeId) || {}).name || a.dutyTypeId) + (a.startTime && a.endTime ? " " + a.startTime + "~" + a.endTime : (a.slot ? " " + a.slot : "")) + "\n파견 기간과 근무일이 중복됩니다.",
           assignment: a
         });
       } else if (rest === "휴가") {

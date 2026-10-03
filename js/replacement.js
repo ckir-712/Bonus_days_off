@@ -17,7 +17,7 @@
     });
     if (!check.ok) return { ok: false, reason: check.reasons.join(", ") };
     found.personId = rec.replacementPersonId;
-    found.source = found.source === "auto" ? "auto" : "manual";
+    found.source = "manual";
     found.replacedFrom = rec.originalPersonId;
     return { ok: true, assignment: found };
   }

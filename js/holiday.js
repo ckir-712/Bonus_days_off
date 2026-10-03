@@ -18,6 +18,10 @@
     return onDate(date).length > 0 || isWeekend(date);
   }
 
+  function kitchenDayKind(date) {
+    return isWeekend(date) ? "weekend" : "weekday";
+  }
+
   function names(date) {
     var extra = onDate(date).map(function (h) { return h.name; });
     if (isWeekend(date) && extra.length === 0) {
@@ -45,6 +49,7 @@
     onDate: onDate,
     isWeekend: isWeekend,
     isHoliday: isHoliday,
+    kitchenDayKind: kitchenDayKind,
     names: names,
     save: save,
     remove: remove

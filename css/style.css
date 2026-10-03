@@ -265,6 +265,13 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
+.table-wrap { overflow: auto; }
+.summary-line { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+.fold {
+  width: 100%;
+  text-align: left;
+  margin-top: 8px;
+}
 
 @media (max-width: 980px) {
   .app { grid-template-columns: 1fr; }

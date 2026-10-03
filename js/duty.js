@@ -152,8 +152,84 @@
 
   function pickBest(candidates, date, dutyTypeId, extraAssignments) {
     return candidates.slice().sort(function (a, b) {
-      return fairnessScore(a, dutyTypeId, date, extraAssignments) - fairnessScore(b, dutyTypeId, date, extraAssignments);
+      var diff = fairnessScore(a, dutyTypeId, date, extraAssignments) - fairnessScore(b, dutyTypeId, date, extraAssignments);
+      if (diff !== 0) return diff;
+      return String(a).localeCompare(String(b));
     });
+  }
+
+  function shiftText(sh) {
+    var Cal = global.DutyApp.calendar;
+    return (sh.order || "?") + "번초 " + Cal.timeText(sh.startTime) + "부터 " + Cal.timeText(sh.endTime) + "까지";
+  }
+
+  function typeRecord(st, id) {
+    return st.dutyTypes.find(function (t) { return t.id === id; });
+  }
+
+  function addCustomType(name) {
+    var label = String(name || "").trim();
+    if (!label) return null;
+    var record = {
+      id: global.DutyApp.state.uid("T"),
+      name: label,
+      category: "general",
+      timed: true,
+      skill: "",
+      shifts: [],
+      requiredPersonnel: 1
+    };
+    saveType(record);
+    return record;
+  }
+
+  function upsertShift(typeId, shift) {
+    global.DutyApp.state.mutate(function (st) {
+      var t = typeRecord(st, typeId);
+      if (!t || t.timed === false) return;
+      t.shifts = t.shifts || [];
+      shift.order = Number(shift.order) || 1;
+      shift.label = shift.order + "번초";
+      shift.requiredPersonnel = Number(shift.requiredPersonnel) || 1;
+      var idx = t.shifts.findIndex(function (s) { return Number(s.order) === shift.order; });
+      if (idx >= 0) {
+        shift.id = t.shifts[idx].id;
+        t.shifts[idx] = shift;
+      } else {
+        if (!shift.id) shift.id = global.DutyApp.state.uid("SH");
+        t.shifts.push(shift);
+      }
+      t.shifts.sort(function (a, b) { return Number(a.order) - Number(b.order); });
+    }, "근무 번초 저장");
+  }
+
+  function removeShift(typeId, shiftId) {
+    global.DutyApp.state.mutate(function (st) {
+      var t = typeRecord(st, typeId);
+      if (!t || !t.shifts) return;
+      t.shifts = t.shifts.filter(function (s) { return s.id !== shiftId; });
+    }, "근무 번초 삭제");
+  }
+
+  function addKitchenItem(item) {
+    global.DutyApp.state.mutate(function (st) {
+      var t = typeRecord(st, "kitchen");
+      if (!t) return;
+      t.items = t.items || [];
+      t.timed = false;
+      if (!item.id) item.id = global.DutyApp.state.uid("K");
+      item.requiredPersonnel = Number(item.requiredPersonnel) || 1;
+      item.label = String(item.label || "항목").trim() || "항목";
+      t.items.push(item);
+    }, "취사지원 항목 추가");
+  }
+
+  function removeKitchenItem(itemId) {
+    global.DutyApp.state.mutate(function (st) {
+      var t = typeRecord(st, "kitchen");
+      if (!t) return;
+      t.items = (t.items || []).filter(function (s) { return s.id !== itemId; });
+    }, "취사지원 항목 삭제");
   }
 
   global.DutyApp.duty = {
@@ -172,6 +248,12 @@
     overlappingAssignments: overlappingAssignments,
     consecutiveCount: consecutiveCount,
     fairnessScore: fairnessScore,
-    pickBest: pickBest
+    pickBest: pickBest,
+    shiftText: shiftText,
+    addCustomType: addCustomType,
+    upsertShift: upsertShift,
+    removeShift: removeShift,
+    addKitchenItem: addKitchenItem,
+    removeKitchenItem: removeKitchenItem
   };
 })(window);

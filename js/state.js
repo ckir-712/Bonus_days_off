@@ -10,13 +10,49 @@
     return JSON.parse(JSON.stringify(value));
   }
 
+  function makeShift(order, start, end, required) {
+    return {
+      id: "sh-" + order + "-" + String(start).replace(":", "") + "-" + String(end).replace(":", ""),
+      order: order,
+      label: order + "번초",
+      startTime: start,
+      endTime: end,
+      requiredPersonnel: required
+    };
+  }
+
   function defaultDutyTypes() {
     return [
-      { id: "cctv", name: "CCTV", category: "rotation", defaultStart: "22:00", defaultEnd: "02:00", requiredPersonnel: 2, skill: "" },
-      { id: "watch", name: "불침번", category: "rotation", defaultStart: "22:00", defaultEnd: "02:00", requiredPersonnel: 2, skill: "" },
-      { id: "kitchen", name: "취사지원", category: "general", defaultStart: "05:30", defaultEnd: "08:00", requiredPersonnel: 3, skill: "kitchen" },
-      { id: "guard", name: "경계근무", category: "general", defaultStart: "22:00", defaultEnd: "00:00", requiredPersonnel: 2, skill: "" },
-      { id: "other", name: "기타 근무", category: "general", defaultStart: "09:00", defaultEnd: "17:00", requiredPersonnel: 1, skill: "" }
+      {
+        id: "cctv", name: "CCTV", category: "rotation", timed: true, skill: "",
+        shifts: [
+          makeShift(1, "18:00", "22:00", 2),
+          makeShift(2, "22:00", "02:00", 2),
+          makeShift(3, "02:00", "06:00", 2)
+        ]
+      },
+      {
+        id: "watch", name: "불침번", category: "rotation", timed: true, skill: "",
+        shifts: [
+          makeShift(1, "22:00", "02:00", 2),
+          makeShift(2, "02:00", "06:00", 2)
+        ]
+      },
+      {
+        id: "kitchen", name: "취사지원", category: "general", timed: false, skill: "",
+        items: [
+          { id: "breakfast", label: "아침", requiredPersonnel: 3 }
+        ],
+        shifts: []
+      },
+      {
+        id: "guard", name: "경계근무", category: "general", timed: true, skill: "",
+        shifts: [makeShift(1, "22:00", "00:00", 2)]
+      },
+      {
+        id: "other", name: "기타 근무", category: "general", timed: true, skill: "",
+        shifts: []
+      }
     ];
   }
 
@@ -68,10 +104,11 @@
 
   function emptyState() {
     return {
-      version: "1.0.0",
+      version: "1.1.0",
       personnel: [],
       leaves: [],
       dispatches: [],
+      dispatchArchive: [],
       holidays: defaultHolidays(),
       dutyTypes: defaultDutyTypes(),
       dutySchedules: [],
@@ -141,19 +178,90 @@
     appState.history = appState.history.slice(0, HISTORY_LIMIT);
   }
 
+  function shiftsFromSlots(slots, prefix) {
+    return (slots || []).map(function (s, i) {
+      var order = i + 1;
+      return {
+        id: s.id || (prefix + "-sh-" + order),
+        order: order,
+        label: order + "번초",
+        startTime: s.startTime,
+        endTime: s.endTime,
+        requiredPersonnel: Number(s.requiredPersonnel) || 1
+      };
+    });
+  }
+
+  function normalizeState(st) {
+    var base = emptyState();
+    st.dispatchArchive = st.dispatchArchive || [];
+    st.dutySchedules = st.dutySchedules || [];
+    st.assignments = st.assignments || [];
+    st.personnel = st.personnel || [];
+    st.dispatches = st.dispatches || [];
+    st.leaves = st.leaves || [];
+    st.replacements = st.replacements || [];
+    st.history = st.history || [];
+    st.dutyGroups = Object.assign({ cctv: [], watch: [] }, st.dutyGroups);
+    st.groupMeta = Object.assign({ A: "CCTV조", B: "불침번조" }, st.groupMeta);
+    st.settings = Object.assign(base.settings, st.settings || {});
+    st.rotationSettings = Object.assign(base.rotationSettings, st.rotationSettings || {});
+    if (!st.holidays || !st.holidays.length) st.holidays = defaultHolidays();
+    if (!st.dutyTypes || !st.dutyTypes.length) st.dutyTypes = defaultDutyTypes();
+    var defaults = {};
+    defaultDutyTypes().forEach(function (d) { defaults[d.id] = d; });
+    Object.keys(defaults).forEach(function (id) {
+      if (!st.dutyTypes.some(function (t) { return t.id === id; })) {
+        st.dutyTypes.push(clone(defaults[id]));
+      }
+    });
+    st.dutyTypes.forEach(function (t) {
+      var d = defaults[t.id];
+      if (t.id === "kitchen") {
+        t.timed = false;
+        t.skill = "";
+        t.category = "general";
+        t.shifts = [];
+        if (!t.items || !t.items.length) {
+          var src = (st.settings && st.settings.kitchenSlots) || (d && d.items) || [];
+          t.items = src.map(function (s, i) {
+            return {
+              id: s.id || ("kitchen-" + (i + 1)),
+              label: s.label || ("항목" + (i + 1)),
+              requiredPersonnel: Number(s.requiredPersonnel) || 1
+            };
+          });
+        }
+        return;
+      }
+      t.timed = t.timed !== false;
+      if (!t.shifts || !t.shifts.length) {
+        var slotKey = t.id === "cctv" ? "cctvSlots" : t.id === "watch" ? "watchSlots" : t.id === "guard" ? "guardSlots" : "";
+        var fromSlots = slotKey ? shiftsFromSlots(st.settings[slotKey], t.id) : [];
+        if (fromSlots.length) t.shifts = fromSlots;
+        else if (d && t.id !== "other" && d.shifts && d.shifts.length) t.shifts = clone(d.shifts);
+        else t.shifts = t.shifts || [];
+      }
+      t.shifts.forEach(function (s, i) {
+        s.order = Number(s.order) || (i + 1);
+        s.label = s.order + "번초";
+        s.requiredPersonnel = Number(s.requiredPersonnel) || 1;
+      });
+    });
+    st.version = "1.1.0";
+    return st;
+  }
+
   function load() {
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         var parsed = JSON.parse(raw);
-        appState = Object.assign(emptyState(), parsed);
-        appState.dutyGroups = Object.assign({ cctv: [], watch: [] }, appState.dutyGroups);
-        appState.settings = Object.assign(emptyState().settings, appState.settings);
-        appState.rotationSettings = Object.assign(emptyState().rotationSettings, appState.rotationSettings);
+        appState = normalizeState(Object.assign(emptyState(), parsed));
         return;
       }
     } catch (e) {}
-    appState = sampleState();
+    appState = normalizeState(sampleState());
     persist();
   }
 
@@ -186,11 +294,7 @@
   }
 
   function importData(data) {
-    var next = Object.assign(emptyState(), data);
-    next.dutyGroups = Object.assign({ cctv: [], watch: [] }, next.dutyGroups);
-    next.settings = Object.assign(emptyState().settings, next.settings || {});
-    next.rotationSettings = Object.assign(emptyState().rotationSettings, next.rotationSettings || {});
-    appState = next;
+    appState = normalizeState(Object.assign(emptyState(), data));
     addHistory("JSON 가져오기 완료");
     persist();
   }
@@ -237,6 +341,7 @@
     restoreAutoSnapshot: restoreAutoSnapshot,
     subscribe: subscribe,
     emptyState: emptyState,
-    sampleState: sampleState
+    sampleState: sampleState,
+    normalizeState: normalizeState
   };
 })(window);

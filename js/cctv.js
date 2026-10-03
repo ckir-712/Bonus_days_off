@@ -72,7 +72,7 @@
 
   function availableMembers(date, role) {
     return groupForRole(date, role).filter(function (id) {
-      return global.DutyApp.duty.isAvailableForDuty(id, date, role).ok;
+      return global.DutyApp.duty.isAvailableForDuty(id, date, role, { checkConsecutive: false }).ok;
     });
   }
 
@@ -112,19 +112,44 @@
     }, "조 편성 변경");
   }
 
+  function nextDayBucket(dutyDate) {
+    var next = global.DutyApp.calendar.addDays(dutyDate, 1);
+    var day = global.DutyApp.calendar.weekday(next);
+    if (day === 0 || day === 6) return "weekend";
+    if (day === 5) return "friday";
+    return "weekday";
+  }
+
+  function bucketLabel(bucket) {
+    if (bucket === "friday") return "다음날 금요일";
+    if (bucket === "weekend") return "다음날 주말";
+    return "다음날 평일";
+  }
+
+  function shifts() {
+    var type = global.DutyApp.duty.typeById("cctv");
+    return ((type && type.shifts) || []).slice().sort(function (a, b) { return Number(a.order) - Number(b.order); });
+  }
+
   function slots() {
-    return state().settings.cctvSlots || [];
+    return shifts();
   }
 
   function neededOn(date) {
-    return slots().map(function (s) {
+    var bucket = nextDayBucket(date);
+    return shifts().map(function (s) {
       return {
         dutyTypeId: "cctv",
         date: date,
         startTime: s.startTime,
         endTime: s.endTime,
         requiredPersonnel: s.requiredPersonnel,
-        slot: s.startTime + "~" + s.endTime
+        slot: s.label,
+        slotKey: s.id,
+        order: s.order,
+        bucket: bucket,
+        monthKey: date.slice(0, 7),
+        fairMode: "cctv"
       };
     });
   }
@@ -142,6 +167,9 @@
     autoFormGroups: autoFormGroups,
     resetGroups: resetGroups,
     movePerson: movePerson,
+    nextDayBucket: nextDayBucket,
+    bucketLabel: bucketLabel,
+    shifts: shifts,
     slots: slots,
     neededOn: neededOn
   };

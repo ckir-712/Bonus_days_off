@@ -39,5 +39,42 @@
     ];
   }
 
-  global.DutyApp.statistics = { personStats: personStats, groupStats: groupStats };
+  function monthlyDutyCounts(dutyTypeId, monthKey) {
+    var list = global.DutyApp.state.getState().assignments.filter(function (a) {
+      return a.dutyTypeId === dutyTypeId && a.date.slice(0, 7) === monthKey;
+    });
+    return global.DutyApp.personnel.list().map(function (p) {
+      var mine = list.filter(function (a) { return a.personId === p.id; });
+      var byBucket = { weekday: 0, friday: 0, weekend: 0 };
+      var bySlot = {};
+      mine.forEach(function (a) {
+        var bucket = a.bucket;
+        if (!bucket && dutyTypeId === "cctv") bucket = global.DutyApp.cctv.nextDayBucket(a.date);
+        if (!bucket && dutyTypeId === "kitchen") bucket = global.DutyApp.holiday.kitchenDayKind(a.date);
+        if (bucket && byBucket[bucket] !== undefined) byBucket[bucket] += 1;
+        var key = a.slotKey || a.slot || "근무";
+        var label = a.slot || key;
+        if (!bySlot[key]) bySlot[key] = { label: label, weekday: 0, friday: 0, weekend: 0, all: 0 };
+        if (bucket && bySlot[key][bucket] !== undefined) bySlot[key][bucket] += 1;
+        bySlot[key].all += 1;
+      });
+      return {
+        id: p.id,
+        name: p.name,
+        rank: p.rank,
+        total: mine.length,
+        byBucket: byBucket,
+        bySlot: bySlot
+      };
+    }).sort(function (a, b) {
+      if (a.total !== b.total) return a.total - b.total;
+      return a.name.localeCompare(b.name, "ko");
+    });
+  }
+
+  global.DutyApp.statistics = {
+    personStats: personStats,
+    groupStats: groupStats,
+    monthlyDutyCounts: monthlyDutyCounts
+  };
 })(window);
